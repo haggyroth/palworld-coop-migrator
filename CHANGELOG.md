@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- test: CLI test suite covering every command, exit code and error path
+  (`cli.py` went from 0% to 97% coverage)
+- test: coverage for the GVAS property types a real `Level.sav` uses but the
+  WorldOption fixture never exercised, including opaque
+  `ArrayProperty<ByteProperty>` blobs and unknown property types
+- ci: coverage job with branch coverage and a 90% floor, reported to the job
+  summary
+- ci: CodeQL security analysis on push, pull request and weekly schedule
+- chore: Dependabot for GitHub Actions and pip, grouped and weekly
+
+### Changed
+
+- ci: `actions/checkout` v4 to v5 and `actions/setup-python` v5 to v6, clearing
+  the Node.js 20 deprecation warning on every run
+- ci: workflows now declare a least-privilege `permissions` block
+
 ## [0.1.0] - 2026-07-25
 
 Initial release. Reads modern Oodle saves; does not yet perform the host GUID

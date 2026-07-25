@@ -97,6 +97,92 @@ def prop_struct(name: str, struct_type: str, inner: bytes) -> bytes:
     )
 
 
+def prop_int64(name: str, value: int) -> bytes:
+    return (
+        fstring(name)
+        + fstring("Int64Property")
+        + struct.pack("<q", 8)
+        + b"\x00"
+        + struct.pack("<q", value)
+    )
+
+
+def prop_double(name: str, value: float) -> bytes:
+    return (
+        fstring(name)
+        + fstring("DoubleProperty")
+        + struct.pack("<q", 8)
+        + b"\x00"
+        + struct.pack("<d", value)
+    )
+
+
+def prop_byte_enum(name: str, enum_name: str, value: str) -> bytes:
+    body = fstring(value)
+    return (
+        fstring(name)
+        + fstring("ByteProperty")
+        + struct.pack("<q", len(body))
+        + fstring(enum_name)
+        + b"\x00"
+        + body
+    )
+
+
+def prop_byte_raw(name: str, value: int) -> bytes:
+    return (
+        fstring(name)
+        + fstring("ByteProperty")
+        + struct.pack("<q", 1)
+        + fstring("None")
+        + b"\x00"
+        + bytes([value])
+    )
+
+
+def prop_array_str(name: str, values: list[str], inner: str = "StrProperty") -> bytes:
+    body = struct.pack("<i", len(values)) + b"".join(fstring(v) for v in values)
+    return (
+        fstring(name)
+        + fstring("ArrayProperty")
+        + struct.pack("<q", len(body))
+        + fstring(inner)
+        + b"\x00"
+        + body
+    )
+
+
+def prop_array_bytes(name: str, count: int, payload: bytes) -> bytes:
+    """An ArrayProperty of a non-string inner type: opaque, must be skipped."""
+    body = struct.pack("<i", count) + payload
+    return (
+        fstring(name)
+        + fstring("ArrayProperty")
+        + struct.pack("<q", len(body))
+        + fstring("ByteProperty")
+        + b"\x00"
+        + body
+    )
+
+
+def prop_struct_binary(name: str, struct_type: str, raw: bytes) -> bytes:
+    """A StructProperty whose type is serialised as opaque binary."""
+    return (
+        fstring(name)
+        + fstring("StructProperty")
+        + struct.pack("<q", len(raw))
+        + fstring(struct_type)
+        + b"\x00" * 16
+        + b"\x00"
+        + raw
+    )
+
+
+def prop_unknown(name: str, ptype: str, raw: bytes) -> bytes:
+    """A property type the reader does not model; it must skip exactly `size`."""
+    return fstring(name) + fstring(ptype) + struct.pack("<q", len(raw)) + b"\x00" + raw
+
+
 NONE = fstring("None")
 
 

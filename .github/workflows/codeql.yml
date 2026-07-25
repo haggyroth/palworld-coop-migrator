@@ -1,0 +1,37 @@
+name: CodeQL
+
+# Automated security review. This project parses untrusted binary input -- save
+# files supplied by whoever runs the tool -- so the decoder paths are exactly
+# where a scanner earns its keep.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so newly published rules find old code.
+    - cron: "17 4 * * 1"
+
+jobs:
+  analyze:
+    name: analyze python
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-and-quality
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"

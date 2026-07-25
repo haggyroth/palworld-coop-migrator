@@ -50,6 +50,19 @@ packages = ["src/palmigrate"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 
+[tool.coverage.run]
+source = ["palmigrate"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "except ImportError:",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py39"
