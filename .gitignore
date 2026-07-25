@@ -1,0 +1,65 @@
+# --- never commit game saves or anything derived from them -------------------
+# Save files are personal data and may contain player names / Steam IDs.
+*.sav
+*.sav.*
+SaveGames/
+Players/
+*.zip
+*.sha256
+
+# --- never commit credentials ------------------------------------------------
+credentials.txt
+*.env
+.env
+.env.*
+secrets.*
+
+# --- generated server config (contains passwords) ----------------------------
+PalWorldSettings.ini
+
+# --- python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib60/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- virtual envs ------------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+
+# --- testing / tooling -------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# --- editors / OS ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
