@@ -110,7 +110,11 @@ def cmd_settings(args: argparse.Namespace) -> int:
     ini, changes = settings_mod.render_ini(values, text, overrides)
 
     if args.output:
-        Path(args.output).write_text(ini, encoding="utf-8", newline="\r\n")
+        # CRLF, matching what the server itself writes. Note that
+        # Path.write_text() only grew a `newline` argument in 3.10, and this
+        # package supports 3.9, so go through open() instead.
+        with open(args.output, "w", encoding="utf-8", newline="\r\n") as fh:
+            fh.write(ini)
         print(f"wrote {args.output}")
     else:
         sys.stdout.write(ini)

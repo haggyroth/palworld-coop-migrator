@@ -34,6 +34,10 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.6",
+    # Statically asserts the codebase really runs on the oldest Python we
+    # advertise. Caught Path.write_text(newline=...), which is 3.10+ and would
+    # have raised TypeError for any 3.9 user writing a settings file.
+    "vermin>=1.6",
 ]
 
 [project.scripts]
@@ -49,6 +53,19 @@ packages = ["src/palmigrate"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["palmigrate"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "except ImportError:",
+]
 
 [tool.ruff]
 line-length = 100

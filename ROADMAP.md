@@ -13,6 +13,10 @@
 - [x] CLI: `inspect`, `scan`, `settings`, `convert`
 - [x] Test suite on synthetic fixtures — no real save data in the repo
 - [x] Format documentation
+- [x] CI across Windows, Linux and macOS on Python 3.9–3.12
+- [x] Coverage gate at 90% (currently ~95% with branch coverage)
+- [x] CodeQL analysis and Dependabot
+- [x] Branch protection on `main` with required status checks
 
 ## Next — the structural remap
 

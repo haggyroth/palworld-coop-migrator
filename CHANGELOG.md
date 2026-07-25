@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- test: CLI test suite covering every command, exit code and error path
+  (`cli.py` went from 0% to 97% coverage)
+- test: coverage for the GVAS property types a real `Level.sav` uses but the
+  WorldOption fixture never exercised, including opaque
+  `ArrayProperty<ByteProperty>` blobs and unknown property types
+- ci: coverage job with branch coverage and a 90% floor, reported to the job
+  summary
+- ci: CodeQL security analysis on push, pull request and weekly schedule
+- chore: Dependabot for GitHub Actions and pip, grouped and weekly
+
+### Fixed
+
+- fix: `palmigrate settings -o` raised `TypeError` on Python 3.9. It used
+  `Path.write_text(newline=...)`, which is 3.10+, while the package advertises
+  3.9 support. Found by the new CLI tests running against the CI matrix.
+
+### Changed
+
+- ci: `actions/checkout` v4 to v5 and `actions/setup-python` v5 to v6, clearing
+  the Node.js 20 deprecation warning on every run
+- ci: workflows now declare a least-privilege `permissions` block
+- ci: `vermin` asserts the codebase runs on the oldest advertised Python
+  statically, rather than relying on a test happening to execute the line
+
 ## [0.1.0] - 2026-07-25
 
 Initial release. Reads modern Oodle saves; does not yet perform the host GUID

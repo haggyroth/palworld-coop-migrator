@@ -1,0 +1,37 @@
+version: 2
+
+updates:
+  # Workflow actions. This repo pins actions by major tag, so these PRs are how
+  # deprecations (e.g. runner Node version bumps) surface before CI starts
+  # warning on every run.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Python dependencies. Runtime deps are deliberately empty and pyooz is an
+  # optional extra, so this mostly tracks the dev toolchain.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+    groups:
+      dev-dependencies:
+        patterns:
+          - "*"

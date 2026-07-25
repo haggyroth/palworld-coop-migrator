@@ -92,6 +92,91 @@ class TestPropertyTypes:
         assert isinstance(props["OptionWorldData"]["Settings"], dict)
 
 
+class TestRemainingPropertyTypes:
+    """
+    Types the WorldOption fixture never exercises but a real Level.sav does.
+    Each must round-trip its value *and* leave the cursor aligned, which the
+    trailing sentinel property checks.
+    """
+
+    def _parse(self, prop: bytes):
+        from .conftest import prop_int as _int
+
+        payload = gvas_header() + prop + _int("Sentinel", 999) + NONE
+        _, props = parse(payload)
+        assert props["Sentinel"] == 999, "walk desynchronised after the property"
+        return props
+
+    def test_int64(self):
+        from .conftest import prop_int64
+
+        props = self._parse(prop_int64("Big", -2_000_000_000_000))
+        assert props["Big"] == -2_000_000_000_000
+
+    def test_double(self):
+        from .conftest import prop_double
+
+        props = self._parse(prop_double("Precise", 1234.5678))
+        assert props["Precise"] == pytest.approx(1234.5678)
+
+    def test_byte_property_with_enum_name(self):
+        from .conftest import prop_byte_enum
+
+        props = self._parse(prop_byte_enum("Mode", "EPalMode", "EPalMode::Hard"))
+        assert props["Mode"] == "EPalMode::Hard"
+
+    def test_byte_property_raw(self):
+        from .conftest import prop_byte_raw
+
+        props = self._parse(prop_byte_raw("Flag", 7))
+        assert props["Flag"] == 7
+
+    def test_array_of_strings(self):
+        from .conftest import prop_array_str
+
+        props = self._parse(prop_array_str("Names", ["alpha", "beta", "gamma"]))
+        assert props["Names"] == ["alpha", "beta", "gamma"]
+
+    def test_array_of_enums(self):
+        from .conftest import prop_array_str
+
+        values = ["EPalAllowConnectPlatform::Steam", "EPalAllowConnectPlatform::Xbox"]
+        props = self._parse(prop_array_str("Platforms", values, inner="EnumProperty"))
+        assert props["Platforms"] == values
+
+    def test_opaque_array_is_skipped_not_parsed(self):
+        """
+        Palworld stores custom binary in ArrayProperty<ByteProperty>. The reader
+        must not try to interpret it, but must still land on the next property.
+        """
+        from .conftest import prop_array_bytes
+
+        props = self._parse(prop_array_bytes("RawData", 4, b"\xde\xad\xbe\xef"))
+        assert props["RawData"]["__array_of__"] == "ByteProperty"
+        assert props["RawData"]["__count__"] == 4
+
+    def test_binary_struct_is_returned_raw(self):
+        from .conftest import prop_struct_binary
+
+        raw = bytes(range(16))
+        props = self._parse(prop_struct_binary("Id", "Guid", raw))
+        assert props["Id"]["__struct_type__"] == "Guid"
+        assert props["Id"]["__raw__"] == raw
+
+    def test_datetime_struct_is_binary(self):
+        from .conftest import prop_struct_binary
+
+        props = self._parse(prop_struct_binary("Timestamp", "DateTime", b"\x01" * 8))
+        assert props["Timestamp"]["__struct_type__"] == "DateTime"
+
+    def test_unknown_property_type_skips_its_declared_size(self):
+        from .conftest import prop_unknown
+
+        props = self._parse(prop_unknown("Weird", "SomeFutureProperty", b"\x00" * 12))
+        assert props["Weird"]["__unparsed__"] == "SomeFutureProperty"
+        assert props["Weird"]["__size__"] == 12
+
+
 class TestDesyncDetection:
     def test_raises_when_type_is_not_a_property(self):
         payload = gvas_header() + fstring("Broken") + fstring("NotAType") + NONE
