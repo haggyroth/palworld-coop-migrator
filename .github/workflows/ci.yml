@@ -104,11 +104,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install ruff
-        run: python -m pip install ruff
+      - name: Install lint tooling
+        run: python -m pip install ruff vermin
 
       - name: Lint
         run: ruff check src tests
 
       - name: Format check
         run: ruff format --check src tests
+
+      # The matrix would eventually catch a too-new stdlib API, but only if a
+      # test happens to execute that line. This asserts it statically.
+      - name: Verify the codebase runs on the oldest supported Python
+        run: vermin --target=3.9 --violations --eval-annotations --no-tips src

@@ -19,11 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - ci: CodeQL security analysis on push, pull request and weekly schedule
 - chore: Dependabot for GitHub Actions and pip, grouped and weekly
 
+### Fixed
+
+- fix: `palmigrate settings -o` raised `TypeError` on Python 3.9. It used
+  `Path.write_text(newline=...)`, which is 3.10+, while the package advertises
+  3.9 support. Found by the new CLI tests running against the CI matrix.
+
 ### Changed
 
 - ci: `actions/checkout` v4 to v5 and `actions/setup-python` v5 to v6, clearing
   the Node.js 20 deprecation warning on every run
 - ci: workflows now declare a least-privilege `permissions` block
+- ci: `vermin` asserts the codebase runs on the oldest advertised Python
+  statically, rather than relying on a test happening to execute the line
 
 ## [0.1.0] - 2026-07-25
 

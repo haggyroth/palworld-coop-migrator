@@ -135,6 +135,27 @@ class TestSettings:
         assert dst.exists()
         assert "OptionSettings=(" in dst.read_text(encoding="utf-8")
 
+    def test_written_ini_uses_crlf(self, world, default_ini, tmp_path):
+        """
+        The server writes CRLF, so we do too. This also guards the 3.9 fix:
+        Path.write_text(newline=...) is 3.10+, so the newline handling has to
+        go through open() and must not silently regress to LF.
+        """
+        dst = tmp_path / "PalWorldSettings.ini"
+        main(
+            [
+                "settings",
+                str(world / "WorldOption.sav"),
+                "--default-ini",
+                str(default_ini),
+                "-o",
+                str(dst),
+            ]
+        )
+        raw = dst.read_bytes()
+        assert b"\r\n" in raw
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "found a bare LF"
+
     def test_override_is_applied(self, world, default_ini, tmp_path):
         dst = tmp_path / "out.ini"
         main(
