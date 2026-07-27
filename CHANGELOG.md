@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-27
+
 ### Added
 
 - feat: `palmigrate migrate` — end-to-end migration of a co-op world folder onto
@@ -16,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   copies `LocalData.sav` out to a separate `client/` folder with instructions
   since it belongs on the player's own machine. `--dry-run` shows the plan and
   writes nothing; exit 2 means the plan was unsafe and nothing was written
+- docs: comprehensive README — a full step-by-step migration walkthrough,
+  detailed `LocalData.sav` move instructions for the host *and* for other
+  players, a verification checklist, a symptom-to-cause troubleshooting table,
+  and a complete command reference
 
 ## [0.4.0] - 2026-07-27
 
@@ -89,5 +95,6 @@ objects all intact.
 Versions 0.1.0 through 0.3.1 were development milestones and were never tagged
 or published. `0.4.0` is the first release.
 
-[Unreleased]: https://github.com/haggyroth/palworld-coop-migrator/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/haggyroth/palworld-coop-migrator/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/haggyroth/palworld-coop-migrator/releases/tag/v0.5.0
 [0.4.0]: https://github.com/haggyroth/palworld-coop-migrator/releases/tag/v0.4.0
