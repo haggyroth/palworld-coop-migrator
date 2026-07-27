@@ -176,6 +176,87 @@ class TestRemainingPropertyTypes:
         assert props["Weird"]["__unparsed__"] == "SomeFutureProperty"
         assert props["Weird"]["__size__"] == 12
 
+    def test_uint32(self):
+        from .conftest import prop_uint32
+
+        props = self._parse(prop_uint32("Mask", 4_000_000_000))
+        assert props["Mask"] == 4_000_000_000  # would be negative if read signed
+
+    def test_uint64(self):
+        from .conftest import prop_uint64
+
+        props = self._parse(prop_uint64("Big", 18_000_000_000_000_000_000))
+        assert props["Big"] == 18_000_000_000_000_000_000
+
+
+class TestMapProperty:
+    """
+    A map tag carries two extra FStrings (key type, value type). Reading them
+    is what makes Level.sav parse at all: without it the reader takes the
+    key-type length as the guid flag and desynchronises immediately, then tries
+    to read a ~1.1 GB block.
+    """
+
+    def _parse(self, prop: bytes):
+        from .conftest import prop_int as _int
+
+        payload = gvas_header() + prop + _int("Sentinel", 999) + NONE
+        _, props = parse(payload)
+        assert props["Sentinel"] == 999, "walk desynchronised after the map"
+        return props
+
+    def test_records_key_and_value_types(self):
+        from .conftest import prop_map
+
+        props = self._parse(prop_map("Chars", "StructProperty", "StructProperty", 69))
+        entry = props["Chars"]
+        assert entry["__map__"] is True
+        assert entry["__key_type__"] == "StructProperty"
+        assert entry["__value_type__"] == "StructProperty"
+        assert entry["__count__"] == 69
+
+    def test_records_body_extent_for_later_decoding(self):
+        """The remap needs to find the raw entry bytes again."""
+        from .conftest import prop_map
+
+        entries = b"\xab" * 40
+        props = self._parse(prop_map("M", "StructProperty", "StructProperty", 2, entries))
+        assert props["M"]["__body_length__"] == len(entries)
+
+    def test_walk_survives_a_map_with_a_large_opaque_body(self):
+        from .conftest import prop_map
+
+        props = self._parse(
+            prop_map("Big", "StructProperty", "StructProperty", 1000, b"\x7f" * 5000)
+        )
+        assert props["Big"]["__count__"] == 1000
+
+    def test_non_struct_key_types(self):
+        """EnemyCampStatusMap keys on NameProperty, OilrigMap on EnumProperty."""
+        from .conftest import prop_map
+
+        props = self._parse(prop_map("Camps", "NameProperty", "StructProperty", 13))
+        assert props["Camps"]["__key_type__"] == "NameProperty"
+
+    def test_set_property_tag_is_consumed(self):
+        from .conftest import prop_set
+
+        props = self._parse(prop_set("InLocker", "StructProperty", 7, b"\x01" * 16))
+        assert props["InLocker"]["__set_of__"] == "StructProperty"
+        assert props["InLocker"]["__count__"] == 7
+
+    def test_map_followed_by_map_stays_aligned(self):
+        """Level.sav has 13 maps back to back; one bad skip corrupts them all."""
+        from .conftest import prop_map
+
+        payload = (
+            prop_map("A", "StructProperty", "StructProperty", 1, b"\x01" * 8)
+            + prop_map("B", "NameProperty", "StructProperty", 2, b"\x02" * 12)
+            + prop_map("C", "EnumProperty", "StructProperty", 3, b"\x03" * 4)
+        )
+        props = self._parse(payload)
+        assert [props[k]["__count__"] for k in ("A", "B", "C")] == [1, 2, 3]
+
 
 class TestDesyncDetection:
     def test_raises_when_type_is_not_a_property(self):

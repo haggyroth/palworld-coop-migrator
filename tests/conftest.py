@@ -178,6 +178,62 @@ def prop_struct_binary(name: str, struct_type: str, raw: bytes) -> bytes:
     )
 
 
+def prop_uint32(name: str, value: int) -> bytes:
+    return (
+        fstring(name)
+        + fstring("UInt32Property")
+        + struct.pack("<q", 4)
+        + b"\x00"
+        + struct.pack("<I", value)
+    )
+
+
+def prop_uint64(name: str, value: int) -> bytes:
+    return (
+        fstring(name)
+        + fstring("UInt64Property")
+        + struct.pack("<q", 8)
+        + b"\x00"
+        + struct.pack("<Q", value)
+    )
+
+
+def prop_map(
+    name: str,
+    key_type: str,
+    value_type: str,
+    count: int,
+    entries: bytes = b"",
+) -> bytes:
+    """
+    A MapProperty. The tag carries TWO extra FStrings (key and value type);
+    omitting them makes a reader take the key-type length as the guid flag.
+    """
+    body = struct.pack("<ii", 0, count) + entries
+    return (
+        fstring(name)
+        + fstring("MapProperty")
+        + struct.pack("<q", len(body))
+        + fstring(key_type)
+        + fstring(value_type)
+        + b"\x00"
+        + body
+    )
+
+
+def prop_set(name: str, key_type: str, count: int, entries: bytes = b"") -> bytes:
+    """A SetProperty. The tag carries one extra FString."""
+    body = struct.pack("<ii", 0, count) + entries
+    return (
+        fstring(name)
+        + fstring("SetProperty")
+        + struct.pack("<q", len(body))
+        + fstring(key_type)
+        + b"\x00"
+        + body
+    )
+
+
 def prop_unknown(name: str, ptype: str, raw: bytes) -> bytes:
     """A property type the reader does not model; it must skip exactly `size`."""
     return fstring(name) + fstring(ptype) + struct.pack("<q", len(raw)) + b"\x00" + raw
