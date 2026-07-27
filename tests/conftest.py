@@ -239,6 +239,81 @@ def prop_unknown(name: str, ptype: str, raw: bytes) -> bytes:
     return fstring(name) + fstring(ptype) + struct.pack("<q", len(raw)) + b"\x00" + raw
 
 
+def prop_guid(name: str, raw: bytes) -> bytes:
+    """A StructProperty of type Guid -- how a PlayerUId is stored."""
+    assert len(raw) == 16
+    return (
+        fstring(name)
+        + fstring("StructProperty")
+        + struct.pack("<q", 16)
+        + fstring("Guid")
+        + b"\x00" * 16
+        + b"\x00"
+        + raw
+    )
+
+
+def prop_guid_array(name: str, guids: list[bytes]) -> bytes:
+    """
+    ArrayProperty<StructProperty> of Guid, as OldOwnerPlayerUIds is stored.
+
+    The array repeats a full property header before the elements.
+    """
+    total = 16 * len(guids)
+    header = (
+        fstring(name)
+        + fstring("StructProperty")
+        + struct.pack("<q", total)
+        + fstring("Guid")
+        + b"\x00" * 16
+        + b"\x00"
+    )
+    body = struct.pack("<i", len(guids)) + header + b"".join(guids)
+    return (
+        fstring(name)
+        + fstring("ArrayProperty")
+        + struct.pack("<q", len(body))
+        + fstring("StructProperty")
+        + b"\x00"
+        + body
+    )
+
+
+def prop_byte_array(name: str, blob: bytes) -> bytes:
+    """ArrayProperty<ByteProperty> -- how Palworld stores RawData."""
+    body = struct.pack("<i", len(blob)) + blob
+    return (
+        fstring(name)
+        + fstring("ArrayProperty")
+        + struct.pack("<q", len(body))
+        + fstring("ByteProperty")
+        + b"\x00"
+        + body
+    )
+
+
+def map_entries(entries: bytes, count: int, key_type: str = "StructProperty") -> bytes:
+    """A MapProperty whose body is supplied verbatim."""
+    body = struct.pack("<ii", 0, count) + entries
+    return (
+        fstring("TheMap")
+        + fstring("MapProperty")
+        + struct.pack("<q", len(body))
+        + fstring(key_type)
+        + fstring("StructProperty")
+        + b"\x00"
+        + body
+    )
+
+
+def group_raw_data(group_id: bytes, handles: list[tuple[bytes, bytes]], tail: bytes = b"") -> bytes:
+    """GroupSaveDataMap RawData: group_id, name, handle count, handles, tail."""
+    out = group_id + struct.pack("<i", 0) + struct.pack("<i", len(handles))
+    for uid, instance in handles:
+        out += uid + instance
+    return out + tail
+
+
 NONE = fstring("None")
 
 

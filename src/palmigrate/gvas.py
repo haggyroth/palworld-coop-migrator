@@ -56,13 +56,26 @@ BINARY_STRUCTS: Final = frozenset(
 
 
 class Reader:
-    """Little-endian cursor over a bytes buffer."""
+    """
+    Little-endian cursor over a bytes buffer.
 
-    __slots__ = ("buf", "pos")
+    ``base`` is the offset of ``buf[0]`` within the outermost payload. Nested
+    blobs (a ``RawData`` array parsed as its own property list) are read from a
+    slice, so without it every offset recorded inside them would be relative to
+    the slice and useless for patching the original file.
+    """
 
-    def __init__(self, buf: bytes, pos: int = 0) -> None:
+    __slots__ = ("buf", "pos", "base")
+
+    def __init__(self, buf: bytes, pos: int = 0, base: int = 0) -> None:
         self.buf = buf
         self.pos = pos
+        self.base = base
+
+    @property
+    def abs_pos(self) -> int:
+        """Current position as an offset into the outermost payload."""
+        return self.base + self.pos
 
     def _unpack(self, fmt: str, size: int) -> Any:
         if self.pos + size > len(self.buf):
@@ -145,6 +158,57 @@ def read_header(r: Reader) -> dict[str, Any]:
     return header
 
 
+def _read_struct_array(r: Reader, count: int, end: int) -> list[Any] | None:
+    """
+    Read an ``ArrayProperty<StructProperty>`` whose elements are a binary
+    struct (``OldOwnerPlayerUIds`` is an array of ``Guid``).
+
+    The array repeats a full property header before the elements::
+
+        FString element_name, FString "StructProperty", int64 total_size,
+        FString struct_type, byte[16] struct_guid, uint8 pad,
+        <count * struct values>
+
+    Returns ``None`` if the layout is not this shape or the struct type is not
+    one we treat as binary, leaving the caller to skip the array opaquely. The
+    cursor is restored on failure so the caller's skip stays correct.
+    """
+    saved = r.pos
+    try:
+        r.fstring()  # element name, repeated
+        element_type = r.fstring()
+        if element_type != "StructProperty":
+            r.pos = saved
+            return None
+        total_size = r.i64()
+        struct_type = r.fstring()
+        if struct_type not in BINARY_STRUCTS:
+            r.pos = saved
+            return None
+        r.raw(16)  # struct guid
+        r.u8()  # padding
+        if count == 0:
+            return []
+        element_size, remainder = divmod(total_size, count)
+        if remainder or element_size <= 0 or r.pos + total_size > end:
+            r.pos = saved
+            return None
+        out: list[Any] = []
+        for _ in range(count):
+            offset = r.abs_pos
+            out.append(
+                {
+                    "__struct_type__": struct_type,
+                    "__raw__": r.raw(element_size),
+                    "__offset__": offset,
+                }
+            )
+        return out
+    except GvasError:
+        r.pos = saved
+        return None
+
+
 def _read_value(r: Reader, ptype: str, size: int, tag: dict[str, Any]) -> Any:
     if ptype == "IntProperty":
         return r.i32()
@@ -169,7 +233,12 @@ def _read_value(r: Reader, ptype: str, size: int, tag: dict[str, Any]) -> Any:
     if ptype == "StructProperty":
         struct_type = tag.get("struct_type")
         if struct_type in BINARY_STRUCTS:
-            return {"__struct_type__": struct_type, "__raw__": r.raw(size)}
+            offset = r.abs_pos
+            return {
+                "__struct_type__": struct_type,
+                "__raw__": r.raw(size),
+                "__offset__": offset,
+            }
         return read_properties(r)
     if ptype == "ArrayProperty":
         end = r.pos + size
@@ -179,8 +248,20 @@ def _read_value(r: Reader, ptype: str, size: int, tag: dict[str, Any]) -> Any:
             values = [r.fstring() for _ in range(count)]
             r.pos = end
             return values
+        if inner == "StructProperty":
+            values = _read_struct_array(r, count, end)
+            if values is not None:
+                r.pos = end
+                return values
+        data_pos = r.pos
+        data_offset = r.abs_pos
         r.pos = end  # opaque; skip to keep the walk in sync
-        return {"__array_of__": inner, "__count__": count}
+        return {
+            "__array_of__": inner,
+            "__count__": count,
+            "__data_offset__": data_offset,
+            "__data_length__": end - data_pos,
+        }
     if ptype == "SetProperty":
         end = r.pos + size
         r.i32()  # elements-to-remove count
