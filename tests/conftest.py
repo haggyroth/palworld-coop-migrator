@@ -292,11 +292,16 @@ def prop_byte_array(name: str, blob: bytes) -> bytes:
     )
 
 
-def map_entries(entries: bytes, count: int, key_type: str = "StructProperty") -> bytes:
+def map_entries(
+    entries: bytes,
+    count: int,
+    key_type: str = "StructProperty",
+    name: str = "TheMap",
+) -> bytes:
     """A MapProperty whose body is supplied verbatim."""
     body = struct.pack("<ii", 0, count) + entries
     return (
-        fstring("TheMap")
+        fstring(name)
         + fstring("MapProperty")
         + struct.pack("<q", len(body))
         + fstring(key_type)

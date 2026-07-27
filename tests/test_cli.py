@@ -238,6 +238,62 @@ class TestConvert:
         assert "error:" in capsys.readouterr().err
 
 
+class TestMigrateCommand:
+    @pytest.fixture
+    def coop(self, tmp_path):
+        from .test_migrate import FRIEND, HOST, level_payload, player_payload
+
+        src = tmp_path / "coop"
+        (src / "Players").mkdir(parents=True)
+        container.write(src / "Level.sav", level_payload())
+        container.write(src / "Players" / f"{'0' * 31}1.sav", player_payload(HOST))
+        container.write(src / "Players" / f"{FRIEND.upper()}.sav", player_payload(HOST))
+        container.write(src / "LocalData.sav", container.read(src / "Level.sav").payload)
+        return src
+
+    def test_dry_run_reports_and_writes_nothing(self, coop, tmp_path, capsys):
+        dst = tmp_path / "out"
+        code = main(["migrate", str(coop), str(dst), "--new", "d00dfeed" + "0" * 24, "--dry-run"])
+        assert code == 0
+        assert not dst.exists()
+        out = capsys.readouterr().out
+        assert "DRY RUN" in out
+        assert "reference(s) would be rewritten" in out
+
+    def test_writes_a_world(self, coop, tmp_path, capsys):
+        dst = tmp_path / "out"
+        code = main(["migrate", str(coop), str(dst), "--new", "d00dfeed" + "0" * 24])
+        assert code == 0
+        assert (dst / "Level.sav").is_file()
+        out = capsys.readouterr().out
+        assert "PASS" in out
+        assert "STILL TO DO BY HAND" in out
+
+    def test_unsafe_plan_exits_2(self, coop, tmp_path, capsys):
+        """Remapping onto an id already in the save must refuse."""
+        dst = tmp_path / "out"
+        code = main(["migrate", str(coop), str(dst), "--new", "a1b2c3d4" + "0" * 24])
+        assert code == 2
+        assert "BLOCKED" in capsys.readouterr().err
+
+    def test_existing_destination_errors_cleanly(self, coop, tmp_path, capsys):
+        dst = tmp_path / "out"
+        dst.mkdir()
+        code = main(["migrate", str(coop), str(dst), "--new", "d00dfeed" + "0" * 24])
+        assert code == 1
+        assert "already exists" in capsys.readouterr().err
+
+    def test_force_overwrites(self, coop, tmp_path):
+        dst = tmp_path / "out"
+        dst.mkdir()
+        code = main(["migrate", str(coop), str(dst), "--new", "d00dfeed" + "0" * 24, "--force"])
+        assert code == 0
+
+    def test_new_is_required(self, coop, tmp_path):
+        with pytest.raises(SystemExit):
+            main(["migrate", str(coop), str(tmp_path / "out")])
+
+
 class TestParser:
     def test_version_flag(self, capsys):
         with pytest.raises(SystemExit) as excinfo:

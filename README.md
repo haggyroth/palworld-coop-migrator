@@ -4,10 +4,9 @@ Tools for moving a Palworld **co-op world onto a dedicated server** — includin
 the modern Oodle-compressed saves that the existing community tools cannot
 open.
 
-> **Status: alpha, but proven.** The container codec, GVAS reader, structural
-> locator and host remap have completed a real co-op → dedicated migration:
-> 102 characters, 99 Pals with correct owners, guild and bases intact. There is
-> not yet a single `migrate` command — see [Roadmap](ROADMAP.md).
+> **Status: alpha, but proven.** `palmigrate migrate` has completed a real
+> co-op → dedicated migration: 102 characters, 99 Pals with correct owners,
+> guild and bases intact. See [Roadmap](ROADMAP.md) for what is still rough.
 
 ---
 
@@ -140,6 +139,38 @@ makes the server silently discard every setting with no error message.
 Overrides inherit the default's quoting, so a shell that eats your quotes
 cannot silently produce a malformed value.
 
+### Migrate a whole world
+
+```bash
+# see exactly what would change, write nothing
+palmigrate migrate "coop-world/" "migrated/" --new <your-server-PlayerUId> --dry-run
+
+palmigrate migrate "coop-world/" "migrated/" --new <your-server-PlayerUId>
+```
+
+Your server PlayerUId is the **filename the server wrote to `Players/`** the
+first time you joined it. Start the dedicated server, join once, and look.
+
+```
+files written:
+  remapped   Level.sav  (302 references)
+  copied     LevelMeta.sav  (no references)
+  renamed    A1B2C3D4….sav  (was 00000000000000000000000000000001.sav, 2 references)
+  copied     E5F60718….sav  (not the host)
+  copied     E5F60718…_dps.sav  (not the host)
+  excluded   WorldOption.sav  (a dedicated server reads PalWorldSettings.ini; this would override it)
+  excluded   LocalData.sav  (client-side discovery data; the server never reads it)
+
+302 reference(s) remapped, 99 Pal type marker(s) left alone
+
+structural references to the old id : 0
+Pal type markers left untouched     : 99
+PASS: old id gone, entities and Pal markers intact
+```
+
+The source folder is never written to. Exit codes: `2` if the plan is unsafe
+(nothing written), `3` if validation fails after writing.
+
 ### Convert a container
 
 ```bash
@@ -210,8 +241,10 @@ folder.
 
 ## What is not done yet
 
-An end-to-end `migrate` command. The pieces all work and are tested — see
-[ROADMAP.md](ROADMAP.md).
+See [ROADMAP.md](ROADMAP.md). The main gaps: a few `RawData` blobs
+(`BaseCampSaveData`, some `ItemContainerSaveData` entries) are reported rather
+than decoded, `LocalData.sav` still has to be placed on the client by hand, and
+this has been verified against one game build.
 
 ---
 
