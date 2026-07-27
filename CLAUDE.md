@@ -55,6 +55,23 @@ not add a "write PlM" task; `container.encode()` raises deliberately.
 
 ---
 
+## Editing files on Windows
+
+Do not round-trip source files through PowerShell 5.1's
+`Get-Content`/`Set-Content`. `Get-Content` misreads UTF-8 as ANSI, and
+`Set-Content -Encoding utf8` writes a **BOM**. This has already corrupted em
+dashes in the docs into `â€"` and, separately, put a BOM on `pyproject.toml`
+that made every `pytest` run fail with `Invalid statement (at line 1,
+column 1)`.
+
+Use the editing tools directly. If a script must write a file, use
+`[System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`.
+
+Also note `Set-Location` does not persist between tool calls here — use
+absolute paths or `Push-Location`/`Pop-Location` within a single call.
+
+---
+
 ## Layout
 
 ```
