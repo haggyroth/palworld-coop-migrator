@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "palmigrate"
-version = "0.4.0"
+version = "0.5.0"
 description = "Migrate Palworld co-op worlds to a dedicated server, including modern Oodle (PlM) saves"
 readme = "README.md"
 requires-python = ">=3.9"
