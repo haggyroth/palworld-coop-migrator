@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- feat: `palmigrate migrate` — end-to-end migration of a co-op world folder onto
+  a dedicated server. Plans and validates before writing, never touches the
+  source, renames the host's player file (carrying `_dps` sidecars), leaves
+  `WorldOption.sav` behind because it would override `PalWorldSettings.ini`, and
+  copies `LocalData.sav` out to a separate `client/` folder with instructions
+  since it belongs on the player's own machine. `--dry-run` shows the plan and
+  writes nothing; exit 2 means the plan was unsafe and nothing was written
+
 ## [0.4.0] - 2026-07-27
 
 First tagged release, and the first that can complete a migration.

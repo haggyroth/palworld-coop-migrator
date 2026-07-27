@@ -51,9 +51,10 @@ while base Pals stand idle and chests refuse to open, because ownership and
 lock records still point at the old id. The validator above is the guard
 against shipping that.
 
+- [x] `migrate` command tying the whole flow together end to end
+
 ## Later
 
-- [ ] `migrate` command tying the whole flow together end to end
 - [ ] Handle a co-op world with multiple non-host players in one pass
 - [ ] Optional JSON dump / reload for manual inspection and editing
 - [ ] Detect and warn on `bAutoResetGuildNoOnlinePlayers`, which can dissolve a

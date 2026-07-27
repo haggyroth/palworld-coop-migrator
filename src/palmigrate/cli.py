@@ -152,6 +152,35 @@ def cmd_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_migrate(args: argparse.Namespace) -> int:
+    """Build a dedicated-server world from a co-op save folder."""
+    from . import migrate as migrate_mod
+
+    result = migrate_mod.migrate(
+        args.source,
+        args.destination,
+        args.old,
+        args.new,
+        dry_run=args.dry_run,
+        force=args.force,
+    )
+
+    if result.plan is not None and not result.plan.is_safe:
+        print(result.plan.summary(), file=sys.stderr)
+        return 2
+
+    if args.dry_run:
+        print(result.plan.summary() if result.plan else "nothing to do")
+        print("\nDRY RUN - nothing was written.")
+        return 0
+
+    print(result.summary())
+    if not result.ok:
+        print("\nMigration did NOT complete cleanly.", file=sys.stderr)
+        return 3
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="palmigrate",
@@ -198,6 +227,38 @@ def build_parser() -> argparse.ArgumentParser:
         "--set", action="append", metavar="KEY=VALUE", help="override a setting; repeatable"
     )
     p_settings.set_defaults(func=cmd_settings)
+
+    p_migrate = sub.add_parser(
+        "migrate",
+        help="build a dedicated-server world from a co-op save folder",
+        description=(
+            "Remaps the co-op host's player id and writes a complete world "
+            "folder. The source is never modified. WorldOption.sav is left "
+            "behind (it would override PalWorldSettings.ini) and LocalData.sav "
+            "is copied out separately because it belongs on the player's own "
+            "machine, not the server."
+        ),
+    )
+    p_migrate.add_argument("source", help="the co-op world folder")
+    p_migrate.add_argument("destination", help="where to write the migrated world")
+    p_migrate.add_argument(
+        "--old",
+        default=guid_mod.COOP_HOST_GUID,
+        help="the co-op host id (default: the hardcoded co-op host)",
+    )
+    p_migrate.add_argument(
+        "--new",
+        required=True,
+        help="your dedicated-server PlayerUId, i.e. the name of the "
+        "file the server wrote to Players/ when you first joined",
+    )
+    p_migrate.add_argument(
+        "--dry-run", action="store_true", help="show what would change and write nothing"
+    )
+    p_migrate.add_argument(
+        "--force", action="store_true", help="overwrite the destination if it exists"
+    )
+    p_migrate.set_defaults(func=cmd_migrate)
 
     p_convert = sub.add_parser(
         "convert",
