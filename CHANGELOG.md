@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- fix: **do not rewrite the Pal type marker.** `CharacterSaveParameterMap` keys
+  hold `00000000000000000000000000000001` on every Pal — byte-identical to the
+  co-op host's PlayerUId, but a type marker rather than an owner (Pals owned by
+  other players carry it too). Rewriting it made the server delete the Pals on
+  load, taking a real world from 102 characters to 3. Entries are now classified
+  by `RawData.SaveParameter.IsPlayer`, and markers are kept in
+  `WalkResult.pal_sentinels`, outside the remappable set
+
 ### Added
+
+- feat: `remap.entity_counts` / `compare_entity_counts`, and a Pal-marker
+  before/after check in `validate()`. The previous validation — "no reference to
+  the old id survives" — **passed** on the save with every Pal destroyed,
+  because the rewrite really had completed. Only the marker count reveals it
+  while it is still a file; the deletion itself happens later, inside the game
+- docs: the Pal type marker, with the bisect table that isolated it
+- docs: `LocalData.sav` is client-side. A dedicated server never reads or writes
+  it (verified: the server left its timestamp untouched across a full
+  load-and-save). Omitting it costs map exploration and makes fast-travel points
+  read as locked even though the server-side unlock flags are correct
 
 - feat: `locate` module finds player ids **structurally**, reporting only
   fields the parser identified as a `Guid`. On a real save that is 275 genuine

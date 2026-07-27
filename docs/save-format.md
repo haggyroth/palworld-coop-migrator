@@ -253,7 +253,95 @@ it.
 
 ---
 
-## 7. `WorldOption.sav` vs `PalWorldSettings.ini`
+## 7. The Pal type marker — the trap that destroys saves
+
+`CharacterSaveParameterMap` keys are `{PlayerUId, InstanceId, DebugName}`. For
+a **player character** the key's `PlayerUId` is that player's id. For a **Pal**
+it is the constant:
+
+```
+00000000000000000000000000000001
+```
+
+which is byte-identical to the co-op host's PlayerUId.
+
+It is a *type marker*, not an owner. The proof, from a real save: a Pal named
+`LazyDragon` carried that value in its key while its `OwnerPlayerUId` was a
+completely different player. Ownership lives in
+`RawData.SaveParameter.OwnerPlayerUId`; the key field only says "this row is a
+Pal".
+
+Distribution in one real world of 102 characters:
+
+| Key `PlayerUId` | Count | What |
+|---|---|---|
+| `00000000…0001` | 100 | 99 Pals + the co-op host's own character |
+| `a1b2c3d4…` | 1 | another player's character |
+| `e5f60718…` | 1 | another player's character |
+
+### Why this matters
+
+A remap that rewrites every occurrence of the co-op host id also rewrites 99
+Pal markers. The server then decides those rows are not Pals and **deletes them
+on load**. Measured by bisecting the remap surface by surface:
+
+| What was remapped | Refs | Characters after load |
+|---|---|---|
+| nothing (control) | 0 | 102 → 102 |
+| everything | 401 | 102 → **3** |
+| only `key.PlayerUId` | 100 | 102 → **3** |
+| everything *except* `key.PlayerUId` | 301 | 102 → 102 |
+| correct: keys only where `IsPlayer` | 302 | 102 → 102 |
+
+Distinguish the two cases by reading `RawData.SaveParameter.IsPlayer`. Remap
+the key only when it is true.
+
+### Why the obvious validation does not catch it
+
+Checking that no reference to the old id survives **passes** on the destroyed
+save — the rewrite genuinely was complete. Entity counts do not catch it either,
+because the file still parses with all 102 rows present; the deletion happens
+later, inside the game.
+
+The check that works is counting Pal type markers before and after. If it drops,
+the remap has quietly converted Pals into something the server will discard.
+
+---
+
+## 8. `LocalData.sav` is client-side, and the client is a different machine
+
+A co-op world folder contains `LocalData.sav`
+(`PalLocalWorldSaveGame`) holding per-player *discovery* state:
+
+| Field | Entries in one real save |
+|---|---|
+| `Local_HiddenLocationFlagMap` | 125 |
+| `Local_NewUnlockedTechs` | 227 |
+| `Local_PalEncountFlag` | 101 |
+| `WorldMapUISaveDataMap` | 2 |
+
+A dedicated server **never reads or writes this file**. Verified by dropping it
+into the server's world folder: after a full load-and-save cycle the server
+rewrote `Level.sav` and `LevelMeta.sav` but left `LocalData.sav` with its
+original timestamp untouched.
+
+Each *client* keeps its own copy under
+`%LOCALAPPDATA%\Pal\Saved\SaveGames\<SteamID64>\<world>\`, so joining a
+dedicated server for the first time creates a blank one.
+
+The symptom is specific and easy to misdiagnose: character, Pals, guild and
+inventory are all perfect, but the map is unexplored and fast-travel points
+read as locked — even though `FastTravelPointUnlockFlag` in the *server-side*
+player save is fully populated and correct. In Palworld a fast-travel statue
+you have not *discovered* displays as locked regardless of the unlock flag.
+
+The fix is to copy the co-op `LocalData.sav` onto the player's own machine, into
+the folder for the new server world. It does not belong in the server's world
+folder, and leaving it out of the migration entirely loses map progress.
+
+---
+
+## 9. `WorldOption.sav` vs `PalWorldSettings.ini`
 
 A co-op world stores its complete option set in `WorldOption.sav`. A dedicated
 server **ignores that file** and reads `PalWorldSettings.ini` instead, which
@@ -277,7 +365,7 @@ Two traps when generating the ini:
 
 ---
 
-## 8. A settings footgun worth knowing about
+## 10. A settings footgun worth knowing about
 
 `bAutoResetGuildNoOnlinePlayers` dissolves a guild once no member has logged in
 for `AutoResetGuildTimeNoOnlinePlayers` hours (72 by default).

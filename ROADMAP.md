@@ -18,6 +18,12 @@
 - [x] CodeQL analysis and Dependabot
 - [x] Branch protection on `main` with required status checks
 
+- [x] Structural locator: player ids found by field, never by byte pattern
+- [x] Pal type marker classification (`IsPlayer`) so a remap cannot destroy Pals
+- [x] In-place remap with entity-count and Pal-marker validation
+- [x] **Completed a real co-op → dedicated migration**: 102 characters, 99 Pals
+      with correct owners, guild and bases intact
+
 ## Next — the structural remap
 
 This is the feature that makes the tool able to finish a migration.

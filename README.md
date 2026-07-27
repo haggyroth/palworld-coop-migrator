@@ -4,11 +4,10 @@ Tools for moving a Palworld **co-op world onto a dedicated server** — includin
 the modern Oodle-compressed saves that the existing community tools cannot
 open.
 
-> **Status: alpha.** The save inspection, format conversion, collision analysis
-> and settings migration all work and are tested. **The host GUID remap is not
-> implemented yet** — see [Roadmap](ROADMAP.md). Until it lands, this tool will
-> not finish a migration for you, and it will tell you so rather than
-> corrupting your save.
+> **Status: alpha, but proven.** The container codec, GVAS reader, structural
+> locator and host remap have completed a real co-op → dedicated migration:
+> 102 characters, 99 Pals with correct owners, guild and bases intact. There is
+> not yet a single `migrate` command — see [Roadmap](ROADMAP.md).
 
 ---
 
@@ -167,15 +166,52 @@ before reporting success.
 
 ---
 
+## The Pal type marker
+
+The single most destructive trap in this migration, and the reason a naive
+remap eats your Pals.
+
+`CharacterSaveParameterMap` keys hold `00000000000000000000000000000001` for
+**every Pal** — byte-identical to the co-op host's PlayerUId, but meaning
+*"this row is a Pal"*, not *"this Pal belongs to the host"*. The proof is that
+Pals owned by other players carry it too.
+
+Rewrite it and the server stops recognising those rows as Pals and deletes them
+on load. Bisected on a real world:
+
+| What was remapped | Refs | Characters after load |
+|---|---|---|
+| nothing (control) | 0 | 102 → 102 |
+| everything | 401 | 102 → **3** |
+| only `key.PlayerUId` | 100 | 102 → **3** |
+| everything except `key.PlayerUId` | 301 | 102 → 102 |
+| correct: keys only where `IsPlayer` | 302 | 102 → 102 |
+
+`palmigrate` classifies each entry by `RawData.SaveParameter.IsPlayer` and keeps
+the markers in `WalkResult.pal_sentinels`, outside the remappable set, so they
+can't be touched.
+
+**And the obvious validation does not catch this.** "No reference to the old id
+survives" passes on the destroyed save — the rewrite really was complete. So
+validation also compares entity counts and the Pal-marker count before and
+after.
+
+## Don't forget `LocalData.sav`
+
+It holds per-player map discovery (125 hidden-location flags, 227 unlocked
+techs). A dedicated server never reads or writes it — each **client** keeps its
+own under `%LOCALAPPDATA%\Pal\Saved\SaveGames\<SteamID64>\<world>\`.
+
+Skip it and you get a very confusing result: character, Pals, guild and
+inventory all perfect, but an unexplored map and fast-travel points showing as
+locked *even though the server-side unlock flags are correct*. Copy the co-op
+`LocalData.sav` onto the player's own machine, into the new server world's
+folder.
+
 ## What is not done yet
 
-The host GUID remap. It has to cover the character entry, guild membership,
-guild admin rights, storage container locks, and Pal ownership records — an
-incomplete remap is worse than none, because the usual symptom is base Pals
-going idle and chests locking while everything else looks fine.
-
-Doing it correctly needs decoding of Palworld's custom `RawData` blobs inside
-`Level.sav`. That work is tracked in [ROADMAP.md](ROADMAP.md).
+An end-to-end `migrate` command. The pieces all work and are tested — see
+[ROADMAP.md](ROADMAP.md).
 
 ---
 
