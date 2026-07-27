@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- feat: `locate` module finds player ids **structurally**, reporting only
+  fields the parser identified as a `Guid`. On a real save that is 275 genuine
+  references against 2,904 byte-pattern matches — 2,629 false positives
+  avoided. Each reference carries an absolute byte offset, so a remap is a
+  length-preserving in-place overwrite
+- feat: `ArrayProperty<StructProperty>` support, needed for `OldOwnerPlayerUIds`
+- feat: `Reader` carries a base offset so references found inside a nested
+  `RawData` blob point at the right place in the file
+
 - feat: `MapProperty` and `SetProperty` tag support in the GVAS reader. Their
   tags carry extra type strings; without them the reader desynchronised on the
   first map, so `Level.sav` could not be parsed at all. All eight files of a
