@@ -44,6 +44,20 @@ PLAYER_BEARING_MAPS = (
 #: of a real save: none contains the host id byte pattern.
 NON_PLAYER_BLOBS = frozenset({"CustomVersionData"})
 
+#: The value Palworld puts in ``CharacterSaveParameterMap`` keys for entries
+#: that are Pals rather than player characters.
+#:
+#: It is byte-identical to the co-op host's PlayerUId, and that coincidence is
+#: a trap. In a real save every one of 99 Pals carried this in its key --
+#: including Pals whose ``OwnerPlayerUId`` was a *different* player -- which
+#: proves the key field is a type marker there, not an owner.
+#:
+#: Rewriting it tells the server those entries are no longer Pals and it
+#: deletes them on load. Measured: remapping the 100 key occurrences took a
+#: world from 102 characters to 3, while remapping the other 301 references
+#: preserved all 102.
+PAL_SENTINEL_UID = "00000000000000000000000000000001"
+
 
 @dataclass(frozen=True)
 class GuidRef:
@@ -78,6 +92,9 @@ class WalkResult:
     refs: list[GuidRef] = field(default_factory=list)
     undecoded: list[str] = field(default_factory=list)
     opaque: list[OpaqueRegion] = field(default_factory=list)
+    #: Key fields holding :data:`PAL_SENTINEL_UID` on entries that are Pals.
+    #: Deliberately kept out of ``refs`` so a remap can never rewrite them.
+    pal_sentinels: list[GuidRef] = field(default_factory=list)
 
     def matching(self, guid_text: str) -> list[GuidRef]:
         wanted = guid_mod.normalise(guid_text)
@@ -227,6 +244,86 @@ def decode_group_raw_data(blob: bytes, base: int) -> tuple[list[GuidRef], int]:
     return refs, pos
 
 
+#: Sanity bound on a guild roster. Palworld's own GuildPlayerMaxNum default is
+#: 20; this is deliberately loose but still rules out garbage.
+MAX_GUILD_MEMBERS = 128
+
+#: Longest plausible player name, in bytes, for the shape check below.
+MAX_PLAYER_NAME = 64
+
+
+def _try_parse_members(tail: bytes, pos: int) -> tuple[list[int], int] | None:
+    """
+    Try to read ``int32 count`` at ``pos`` followed by exactly that many player
+    records of ``{Guid, int64 last_online, FString name, uint8 platform}``.
+
+    Returns ``(uid_offsets, end)`` or ``None``. Used to find the roster by its
+    shape instead of by a hardcoded offset, because the bytes preceding it vary
+    with group type and guessing there corrupts guild membership.
+    """
+    if pos + 4 > len(tail):
+        return None
+    (count,) = struct.unpack_from("<i", tail, pos)
+    if not 1 <= count <= MAX_GUILD_MEMBERS:
+        return None
+
+    offsets: list[int] = []
+    cursor = pos + 4
+    for _ in range(count):
+        if cursor + GUID_SIZE + 8 + 4 > len(tail):
+            return None
+        offsets.append(cursor)
+        cursor += GUID_SIZE + 8  # uid + last-online ticks
+        (name_len,) = struct.unpack_from("<i", tail, cursor)
+        cursor += 4
+        if not 0 < name_len <= MAX_PLAYER_NAME or cursor + name_len > len(tail):
+            return None
+        name = tail[cursor : cursor + name_len]
+        # A real name is printable ASCII with a trailing NUL.
+        if not name.endswith(b"\x00") or not all(32 <= c < 127 for c in name[:-1]):
+            return None
+        cursor += name_len + 1  # name plus the trailing platform byte
+    return offsets, cursor
+
+
+def decode_guild_members(tail: bytes, base: int) -> list[GuidRef]:
+    """
+    Locate the admin id and member roster inside a Guild group's tail.
+
+    The roster is found by shape: the only place a plausible count is followed
+    by exactly that many well-formed player records. The admin id sits in the
+    16 bytes immediately before the count.
+
+    Verified against a real guild: admin plus three members, whose names decode
+    as readable text, at the offsets this finds.
+    """
+    for pos in range(len(tail) - 4):
+        parsed = _try_parse_members(tail, pos)
+        if parsed is None:
+            continue
+        uid_offsets, _end = parsed
+        refs: list[GuidRef] = []
+        if pos >= GUID_SIZE:
+            admin = pos - GUID_SIZE
+            refs.append(
+                GuidRef(
+                    "admin_player_uid",
+                    base + admin,
+                    guid_mod.from_bytes(tail[admin : admin + GUID_SIZE]),
+                )
+            )
+        for index, off in enumerate(uid_offsets):
+            refs.append(
+                GuidRef(
+                    f"players[{index}].player_uid",
+                    base + off,
+                    guid_mod.from_bytes(tail[off : off + GUID_SIZE]),
+                )
+            )
+        return refs
+    return []
+
+
 def _unpack_i32(buf: bytes, offset: int) -> tuple[int]:
     if offset + 4 > len(buf):
         raise PalMigrateError(f"read past end of group RawData at {offset}")
@@ -279,7 +376,25 @@ def walk(payload: bytes, world: dict[str, Any]) -> WalkResult:
         try:
             for index, (key, value) in enumerate(iter_map_entries(payload, info)):
                 base = f"{map_name}[{index}]"
-                _collect(key, f"{base}.key", result.refs)
+
+                # Character entries must be classified before their key can be
+                # judged: a Pal's key.PlayerUId is a type marker, not an owner.
+                is_player = None
+                if map_name == "CharacterSaveParameterMap":
+                    is_player = _entry_is_player(payload, value)
+
+                key_refs: list[GuidRef] = []
+                _collect(key, f"{base}.key", key_refs)
+                for ref in key_refs:
+                    if (
+                        is_player is False
+                        and ref.path.endswith(".key.PlayerUId")
+                        and ref.value == PAL_SENTINEL_UID
+                    ):
+                        result.pal_sentinels.append(ref)
+                    else:
+                        result.refs.append(ref)
+
                 for prop_name, prop_value in value.items():
                     if prop_name in NON_PLAYER_BLOBS:
                         continue
@@ -292,6 +407,30 @@ def walk(payload: bytes, world: dict[str, Any]) -> WalkResult:
             result.undecoded.append(f"{map_name}: {exc}")
 
     return result
+
+
+def _entry_is_player(payload: bytes, value: Any) -> bool | None:
+    """
+    Is this ``CharacterSaveParameterMap`` entry a player character?
+
+    Reads ``RawData.SaveParameter.IsPlayer``. Returns ``None`` when the blob
+    cannot be decoded, which the caller treats as "not proven to be a Pal" so
+    the key is kept as a normal reference rather than silently dropped.
+    """
+    raw = value.get("RawData")
+    if not _is_raw_data(raw):
+        return None
+    offset = raw["__data_offset__"]
+    length = raw["__count__"]
+    reader = Reader(payload[offset : offset + length], 0, base=offset)
+    try:
+        inner = read_properties(reader)
+    except PalMigrateError:
+        return None
+    params = inner.get("SaveParameter")
+    if not isinstance(params, dict):
+        return None
+    return bool(params.get("IsPlayer", False))
 
 
 def _is_raw_data(value: Any) -> bool:
@@ -322,12 +461,18 @@ def _walk_blob(
             result.undecoded.append(f"{path}: {exc}")
             return
         result.refs.extend(GuidRef(f"{path}.{r.path}", r.offset, r.value) for r in refs)
+
         if tail_start < length:
-            # Guild name, admin id and member list live here. The layout
-            # varies by group type, so it is reported rather than guessed.
-            result.opaque.append(
-                OpaqueRegion(f"{path}.tail", offset + tail_start, length - tail_start)
-            )
+            tail = blob[tail_start:]
+            tail_base = offset + tail_start
+            members = decode_guild_members(tail, tail_base)
+            if members:
+                result.refs.extend(GuidRef(f"{path}.{m.path}", m.offset, m.value) for m in members)
+            else:
+                # No roster found. For a Guild that is suspicious, so surface
+                # it; for the other group types the tail genuinely holds no
+                # player ids and an empty result is correct.
+                result.opaque.append(OpaqueRegion(f"{path}.tail", tail_base, length - tail_start))
         return
 
     if not _walk_raw_data(value, path, payload, result.refs):

@@ -41,7 +41,19 @@ indistinguishable from ordinary padding followed by a count. On a real 5.4 MB
 and `guid.entropy_warning()` to make it refusable. Any remap must walk the
 structure and rewrite only fields that are genuinely `PlayerUId`.
 
-**3. Python 3.9 is the floor.**
+**3. Never rewrite a `CharacterSaveParameterMap` key on a Pal.**
+For a Pal that key holds `00000000000000000000000000000001` as a *type marker*,
+not an owner — the same bytes as the co-op host's id. Rewriting it makes the
+server delete the Pal on load. This shipped once and took a real world from 102
+characters to 3. `locate.py` classifies via `RawData.SaveParameter.IsPlayer` and
+puts markers in `WalkResult.pal_sentinels`, deliberately outside `refs`, so a
+remap cannot reach them. Do not "simplify" that away.
+
+Related: proving no old-id reference survives does **not** prove a good
+migration. That check passed on the save with every Pal destroyed. Validate
+entity counts and the Pal-marker count too.
+
+**4. Python 3.9 is the floor.**
 `pyproject.toml` advertises `>=3.9` and CI runs it. Do not reach for 3.10+
 stdlib APIs. This already shipped a bug: `Path.write_text(newline=...)` is
 3.10+, so `palmigrate settings -o` raised `TypeError` for 3.9 users. `vermin`

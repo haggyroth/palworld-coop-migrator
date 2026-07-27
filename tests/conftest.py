@@ -314,6 +314,32 @@ def group_raw_data(group_id: bytes, handles: list[tuple[bytes, bytes]], tail: by
     return out + tail
 
 
+def character_entry(
+    player_uid: bytes, instance: bytes, *, is_player: bool, extra: bytes = b""
+) -> bytes:
+    """
+    A CharacterSaveParameterMap entry.
+
+    ``IsPlayer`` is what distinguishes a player character from a Pal, and it
+    decides whether ``key.PlayerUId`` is a real owner id or the Pal type
+    marker. Both cases must be constructible for the tests to be meaningful.
+    """
+    key = (
+        prop_guid("PlayerUId", player_uid)
+        + prop_guid("InstanceId", instance)
+        + prop_str("DebugName", "")
+        + NONE
+    )
+    params = prop_int("Level", 12) + extra
+    if is_player:
+        params = prop_bool("IsPlayer", True) + params
+    inner = (
+        prop_struct("SaveParameter", "PalIndividualCharacterSaveParameter", params + NONE) + NONE
+    )
+    value = prop_byte_array("RawData", inner) + NONE
+    return key + value
+
+
 NONE = fstring("None")
 
 
