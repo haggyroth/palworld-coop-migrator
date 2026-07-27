@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- feat: `MapProperty` and `SetProperty` tag support in the GVAS reader. Their
+  tags carry extra type strings; without them the reader desynchronised on the
+  first map, so `Level.sav` could not be parsed at all. All eight files of a
+  real save now parse with no unhandled property types
+- feat: `UInt32Property` and `UInt64Property`
+- docs: `Level.sav` top-level structure and the location of the five surfaces a
+  host remap must cover
+
 - test: CLI test suite covering every command, exit code and error path
   (`cli.py` went from 0% to 97% coverage)
 - test: coverage for the GVAS property types a real `Level.sav` uses but the

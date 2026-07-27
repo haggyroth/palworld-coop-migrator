@@ -88,6 +88,9 @@ class Reader:
     def i64(self) -> int:
         return self._unpack("<q", 8)
 
+    def u64(self) -> int:
+        return self._unpack("<Q", 8)
+
     def f32(self) -> float:
         return self._unpack("<f", 4)
 
@@ -147,6 +150,10 @@ def _read_value(r: Reader, ptype: str, size: int, tag: dict[str, Any]) -> Any:
         return r.i32()
     if ptype == "Int64Property":
         return r.i64()
+    if ptype == "UInt32Property":
+        return r.u32()
+    if ptype == "UInt64Property":
+        return r.u64()
     if ptype == "FloatProperty":
         return r.f32()
     if ptype == "DoubleProperty":
@@ -174,6 +181,30 @@ def _read_value(r: Reader, ptype: str, size: int, tag: dict[str, Any]) -> Any:
             return values
         r.pos = end  # opaque; skip to keep the walk in sync
         return {"__array_of__": inner, "__count__": count}
+    if ptype == "SetProperty":
+        end = r.pos + size
+        r.i32()  # elements-to-remove count
+        count = r.i32()
+        r.pos = end  # opaque; element layout depends on the inner type
+        return {"__set_of__": tag.get("key_type"), "__count__": count}
+    if ptype == "MapProperty":
+        # Palworld's big world tables (CharacterSaveParameterMap and friends)
+        # are maps whose entries hold custom binary. We read the counts, which
+        # are cheap and useful, then skip the body rather than guess at
+        # layouts that shift between game versions.
+        end = r.pos + size
+        r.i32()  # entries-to-remove count, always 0 in practice
+        count = r.i32()
+        body_start = r.pos
+        r.pos = end
+        return {
+            "__map__": True,
+            "__key_type__": tag.get("key_type"),
+            "__value_type__": tag.get("value_type"),
+            "__count__": count,
+            "__body_offset__": body_start,
+            "__body_length__": end - body_start,
+        }
     # Unknown type: skip its declared size so the walk stays aligned.
     r.raw(size)
     return {"__unparsed__": ptype, "__size__": size}
@@ -209,6 +240,13 @@ def read_properties(r: Reader) -> dict[str, Any]:
             tag["enum_name"] = r.fstring()
         elif ptype == "ArrayProperty":
             tag["inner_type"] = r.fstring()
+        elif ptype in ("MapProperty", "SetProperty"):
+            # A map tag carries TWO extra FStrings. Missing them makes the
+            # reader take the key-type length as the guid flag and desync
+            # immediately, which is how Level.sav first failed to parse.
+            tag["key_type"] = r.fstring()
+            if ptype == "MapProperty":
+                tag["value_type"] = r.fstring()
         r.u8()  # has_property_guid
 
         out[name] = _read_value(r, ptype, size, tag)

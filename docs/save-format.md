@@ -175,11 +175,72 @@ Run `palmigrate scan` against any save to see this analysis for yourself.
 
 ---
 
-## 5. Per-player Pal storage (`_dps.sav`)
+## 5. `MapProperty`, and why `Level.sav` would not parse
+
+A map tag carries **two extra `FString`s** after the size — the key type and
+the value type — before the guid flag:
+
+```
+FString name, FString "MapProperty", int64 size,
+FString key_type, FString value_type, uint8 guid_flag,
+int32 entries_to_remove, int32 count, <entries>
+```
+
+A `SetProperty` is the same with a single type string.
+
+Missing those strings makes a reader take the first byte of the key-type
+length as the guid flag, desynchronise, and then attempt an absurd read. That
+is exactly how `Level.sav` first failed here:
+
+```
+GvasError: read of 1179082417 bytes at offset 264581 exceeds payload
+```
+
+`1179082417` is `0x46484631` — ASCII `1FHF`, i.e. the reader was interpreting
+struct-type text as a length.
+
+With the tag handled, all eight files of a real save parse with no unhandled
+property types.
+
+### `Level.sav` top level
+
+`worldSaveData` holds 22 keys. Counts below are from one real co-op world, for
+scale rather than as fixed values:
+
+| Key | Kind | Count |
+|-----|------|-------|
+| `CharacterSaveParameterMap` | map | 69 |
+| `GroupSaveDataMap` | map | 8 |
+| `ItemContainerSaveData` | map | 1,297 |
+| `CharacterContainerSaveData` | map | 11 |
+| `BaseCampSaveData` | map | 2 |
+| `GuildExtraSaveDataMap` | map | 1 |
+| `MapObjectSaveData` | array | 718 |
+| `DynamicItemSaveData` | array | 249 |
+| `FoliageGridSaveDataMap` | map | 192 |
+| `InLockerCharacterInstanceIDArray` | set | opaque |
+
+The five surfaces a host remap has to cover live in the first five:
+the character entry and Pal ownership in `CharacterSaveParameterMap`, guild
+membership and admin rights in `GroupSaveDataMap`, container locks in
+`ItemContainerSaveData` and `CharacterContainerSaveData`, and base ownership
+in `BaseCampSaveData`.
+
+Map *entries* remain opaque for now: their keys and values are structs whose
+layout is Palworld-specific and shifts between versions. The reader records
+each map's key type, value type, entry count and body extent so a decoder can
+find the bytes without re-walking.
+
+---
+
+## 6. Per-player Pal storage (`_dps.sav`)
 
 Modern saves add a `Players/<PlayerUId>_dps.sav` sidecar holding that player's
-Pal storage, split out of `Level.sav`. It compresses extraordinarily well
-because the container is largely preallocated empty slots:
+Pal storage, split out of `Level.sav`. Its save game class is
+`PalDimensionPalStorageSaveGame`, so `dps` is *Dimension Pal Storage*.
+
+It compresses extraordinarily well because the container is largely
+preallocated empty slots:
 
 ```
 A1B2C3D4..._dps.sav   PlM1  cmp=65,839  unc=73,642,279   (1118x)
@@ -192,7 +253,7 @@ it.
 
 ---
 
-## 6. `WorldOption.sav` vs `PalWorldSettings.ini`
+## 7. `WorldOption.sav` vs `PalWorldSettings.ini`
 
 A co-op world stores its complete option set in `WorldOption.sav`. A dedicated
 server **ignores that file** and reads `PalWorldSettings.ini` instead, which
@@ -216,7 +277,7 @@ Two traps when generating the ini:
 
 ---
 
-## 7. A settings footgun worth knowing about
+## 8. A settings footgun worth knowing about
 
 `bAutoResetGuildNoOnlinePlayers` dissolves a guild once no member has logged in
 for `AutoResetGuildTimeNoOnlinePlayers` hours (72 by default).
