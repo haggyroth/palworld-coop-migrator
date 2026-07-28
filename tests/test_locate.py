@@ -43,15 +43,29 @@ def build_world(map_name: str, entries: bytes, count: int, key_type: str = "Stru
     return payload, {map_name: props["TheMap"]}
 
 
-def character_entry(player_uid: bytes, raw_inner: bytes = b"") -> bytes:
-    """A CharacterSaveParameterMap entry: property-list key, RawData value."""
+def character_entry(player_uid: bytes, raw_inner: bytes = b"", *, is_player: bool = True) -> bytes:
+    """
+    A CharacterSaveParameterMap entry: property-list key, RawData value.
+
+    Defaults to a *player* entry. An entry with no readable
+    ``SaveParameter.IsPlayer`` cannot be classified, and its key is then
+    withheld from ``refs`` on purpose — so tests about ordinary references need
+    a classifiable entry to be testing what they think they are.
+    """
+    from .conftest import prop_bool, prop_struct
+
     key = (
         prop_guid("PlayerUId", player_uid)
         + prop_guid("InstanceId", INSTANCE)
         + prop_str("DebugName", "")
         + NONE
     )
-    inner = raw_inner or (prop_int("Level", 5) + NONE)
+    params = raw_inner + prop_int("Level", 5)
+    if is_player:
+        params = prop_bool("IsPlayer", True) + params
+    inner = (
+        prop_struct("SaveParameter", "PalIndividualCharacterSaveParameter", params + NONE) + NONE
+    )
     value = prop_byte_array("RawData", inner) + NONE
     return key + value
 

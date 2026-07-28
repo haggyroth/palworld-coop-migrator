@@ -115,8 +115,16 @@ def _remap_plain_save(payload: bytes, old: str, new: str) -> tuple[bytes, int]:
 
     Used for player saves and LevelMeta. These have no Pal entries, so every
     Guid holding the old id really is a player reference.
+
+    That assumption is enforced, not trusted: handed a world save this would
+    rewrite Pal type markers and destroy them, so it refuses instead.
     """
     _, props = parse(payload)
+    if _contains_character_map(props):
+        raise PalMigrateError(
+            "refusing to blanket-remap a save containing CharacterSaveParameterMap; "
+            "its keys hold Pal type markers that must not be rewritten"
+        )
     found: list[tuple[str, int, str]] = []
     _collect_guids(props, "", found)
 
@@ -140,6 +148,19 @@ def _remap_plain_save(payload: bytes, old: str, new: str) -> tuple[bytes, int]:
         if any(v == old for _, _, v in recheck):
             raise PalMigrateError("old id survives in a player save after remap")
     return result, changed
+
+
+def _contains_character_map(node: Any, depth: int = 0) -> bool:
+    """True if this property tree holds a CharacterSaveParameterMap anywhere."""
+    if depth > 8 or not isinstance(node, dict):
+        return False
+    if "CharacterSaveParameterMap" in node:
+        return True
+    return any(
+        _contains_character_map(value, depth + 1)
+        for value in node.values()
+        if isinstance(value, dict)
+    )
 
 
 def _write_verified(path: Path, payload: bytes) -> None:
@@ -176,6 +197,20 @@ def migrate(
         raise PalMigrateError(f"no Level.sav in {src}")
     if old == new:
         raise PalMigrateError("the old and new ids are identical")
+
+    # This module promises the source is never written to. Without this check
+    # `force=True` with the same path would overwrite the world being read.
+    src_resolved = src.resolve()
+    dst_resolved = dst.resolve()
+    if src_resolved == dst_resolved:
+        raise PalMigrateError(
+            "destination is the source; that would overwrite the world being migrated"
+        )
+    if src_resolved in dst_resolved.parents:
+        raise PalMigrateError(
+            f"destination {dst_resolved} is inside the source {src_resolved}; "
+            "choose somewhere else so the source stays untouched"
+        )
 
     # --- plan against the world, before touching anything ------------------
     level = container.read(level_path)

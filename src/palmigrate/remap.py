@@ -119,6 +119,18 @@ def plan(payload: bytes, world: dict[str, Any], old_guid: str, new_guid: str) ->
 
     old_bytes = guid_mod.to_bytes(old)
 
+    # An entry we could not classify might be a Pal. Rewriting its key would
+    # delete that Pal, so refuse rather than guess. Skipping the key instead
+    # would be the lesser error, but silently doing so on a save we do not
+    # understand is how a "successful" migration loses data.
+    unclassified = [r for r in walk.unclassified if r.value == old]
+    if unclassified:
+        result.blockers.append(
+            f"{len(unclassified)} character entry key(s) hold the old id but their "
+            f"RawData would not decode, so we cannot tell a player from a Pal. "
+            f"Rewriting a Pal's type marker deletes it. First: {unclassified[0].path}"
+        )
+
     # Anything we could not decode must be proven free of the old id, or the
     # remap would silently leave references behind.
     for region in walk.opaque:
