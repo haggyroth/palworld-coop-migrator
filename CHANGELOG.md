@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+Findings from a full code review of v0.5.0, each reproduced before being fixed.
+
+- fix: **an entry whose `RawData` would not decode had its key treated as
+  remappable.** If that entry was a Pal, its type marker was rewritten and the
+  server deleted it — the same data loss the project exists to prevent,
+  re-entering through the error path, with only a warning emitted. Such keys
+  now go to `WalkResult.unclassified` and **block** the remap. The two mistakes
+  are not equally bad: wrongly skipping a real player's key leaves one stale
+  reference, while wrongly rewriting a Pal marker deletes the Pal permanently
+- fix: `migrate()` with `force=True` and the destination equal to (or inside)
+  the source overwrote the world being read, contradicting the module's own
+  documented promise that the source is never written to
+- fix: `find_references()` silently dropped `opaque`, `pal_sentinels` and
+  `unclassified`, so any caller relying on it lost exactly the signals that
+  make a remap safe
+- fix: `zlib` decompression was unbounded. `MAX_PAYLOAD_BYTES` validated the
+  attacker-controlled header rather than the real expansion — a crafted 81 KB
+  file declaring 1,000 bytes expanded to 84 MB before the mismatch was noticed.
+  Output is now capped during decompression
+- fix: `decode_guild_members()` took the **first** offset that parsed as a
+  roster. If two parse we cannot tell which is real, so it now requires a
+  unique match and otherwise reports the region as opaque
+- fix: `_remap_plain_save()` now refuses a save containing
+  `CharacterSaveParameterMap`. It rewrites every Guid holding the old id, which
+  is correct for a player save and catastrophic for a world save
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

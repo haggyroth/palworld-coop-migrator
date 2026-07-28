@@ -82,10 +82,15 @@ class TestClassification:
         assert len(result.pal_sentinels) == 2
         assert len(result.matching(guid.COOP_HOST_GUID)) == 1
 
-    def test_undecodable_entry_keeps_its_key_as_a_reference(self):
+    def test_undecodable_entry_is_withheld_not_remapped(self):
         """
-        When IsPlayer cannot be read we must not assume "Pal" and silently drop
-        the key. Erring towards treating it as a reference keeps it visible.
+        When IsPlayer cannot be read, the key must NOT be treated as a
+        remappable reference.
+
+        The two mistakes are not equally bad. Wrongly skipping a real player's
+        key leaves one stale reference — detectable and recoverable. Wrongly
+        rewriting a Pal's type marker deletes the Pal permanently. So an
+        entry we cannot classify is withheld and blocks the remap.
         """
         from .conftest import prop_byte_array, prop_guid, prop_str
 
@@ -93,8 +98,37 @@ class TestClassification:
         junk = prop_byte_array("RawData", b"\x7f\x7f\x7f\x7f" + b"\xfe" * 20)
         payload, world = build(key + junk + NONE, 1)
         result = locate.walk(payload, world)
-        assert len(result.matching(guid.COOP_HOST_GUID)) == 1
-        assert result.pal_sentinels == []
+
+        assert result.matching(guid.COOP_HOST_GUID) == [], "must not be remappable"
+        assert len(result.unclassified) == 1
+        assert result.unclassified[0].path.endswith("key.PlayerUId")
+
+    def test_an_unclassifiable_entry_blocks_the_remap(self):
+        """It refuses rather than guessing, because guessing can delete Pals."""
+        from .conftest import prop_byte_array, prop_guid, prop_str
+
+        key = prop_guid("PlayerUId", HOST) + prop_str("DebugName", "") + NONE
+        junk = prop_byte_array("RawData", b"\x7f\x7f\x7f\x7f" + b"\xfe" * 20)
+        payload, world = build(key + junk + NONE, 1)
+        plan = remap.plan(payload, world, guid.COOP_HOST_GUID, "d00dfeed" + "0" * 24)
+
+        assert not plan.is_safe
+        assert any("cannot tell a player from a Pal" in b for b in plan.blockers)
+
+    def test_a_non_sentinel_key_we_cannot_classify_is_still_remappable(self):
+        """
+        Only the sentinel value is ambiguous. Any other id in a key cannot be a
+        Pal marker, so an undecodable blob does not make it unsafe.
+        """
+        from .conftest import prop_byte_array, prop_guid, prop_str
+
+        key = prop_guid("PlayerUId", FRIEND) + prop_str("DebugName", "") + NONE
+        junk = prop_byte_array("RawData", b"\x7f\x7f\x7f\x7f" + b"\xfe" * 20)
+        payload, world = build(key + junk + NONE, 1)
+        result = locate.walk(payload, world)
+
+        assert len(result.matching("a1b2c3d4000000000000000000000000")) == 1
+        assert result.unclassified == []
 
 
 class TestRemapSkipsSentinels:

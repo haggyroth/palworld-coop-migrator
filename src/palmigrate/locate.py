@@ -95,6 +95,15 @@ class WalkResult:
     #: Key fields holding :data:`PAL_SENTINEL_UID` on entries that are Pals.
     #: Deliberately kept out of ``refs`` so a remap can never rewrite them.
     pal_sentinels: list[GuidRef] = field(default_factory=list)
+    #: Keys holding :data:`PAL_SENTINEL_UID` on an entry we could not classify,
+    #: because its ``RawData`` would not decode. Also kept out of ``refs``.
+    #:
+    #: The two mistakes here are not equally bad. Wrongly skipping a real
+    #: player's key leaves one stale reference, which is detectable and
+    #: recoverable. Wrongly rewriting a Pal's type marker deletes the Pal
+    #: permanently. So when we cannot tell, we do not rewrite -- and a remap
+    #: refuses outright rather than guessing.
+    unclassified: list[GuidRef] = field(default_factory=list)
 
     def matching(self, guid_text: str) -> list[GuidRef]:
         wanted = guid_mod.normalise(guid_text)
@@ -290,38 +299,49 @@ def decode_guild_members(tail: bytes, base: int) -> list[GuidRef]:
     """
     Locate the admin id and member roster inside a Guild group's tail.
 
-    The roster is found by shape: the only place a plausible count is followed
-    by exactly that many well-formed player records. The admin id sits in the
-    16 bytes immediately before the count.
+    The roster is found by shape: a plausible count followed by exactly that
+    many well-formed player records. The admin id sits in the 16 bytes
+    immediately before the count.
 
-    Verified against a real guild: admin plus three members, whose names decode
-    as readable text, at the offsets this finds.
+    The match must be **unique**. If two offsets both parse as a roster we
+    cannot tell which is real, and picking one would rewrite bytes that might
+    not be player ids at all -- so we return nothing and let the caller record
+    the region as opaque, which blocks a remap if the old id is in there.
+
+    Measured on a real save: all seven Organization groups yield zero matches
+    (their tails hold no roster) and the one Guild yields exactly one, at
+    offset 149 with three members.
     """
+    matches = []
     for pos in range(len(tail) - 4):
         parsed = _try_parse_members(tail, pos)
-        if parsed is None:
-            continue
-        uid_offsets, _end = parsed
-        refs: list[GuidRef] = []
-        if pos >= GUID_SIZE:
-            admin = pos - GUID_SIZE
-            refs.append(
-                GuidRef(
-                    "admin_player_uid",
-                    base + admin,
-                    guid_mod.from_bytes(tail[admin : admin + GUID_SIZE]),
-                )
+        if parsed is not None:
+            matches.append((pos, parsed))
+
+    if len(matches) != 1:
+        return []
+
+    pos, parsed = matches[0]
+    uid_offsets, _end = parsed
+    refs: list[GuidRef] = []
+    if pos >= GUID_SIZE:
+        admin = pos - GUID_SIZE
+        refs.append(
+            GuidRef(
+                "admin_player_uid",
+                base + admin,
+                guid_mod.from_bytes(tail[admin : admin + GUID_SIZE]),
             )
-        for index, off in enumerate(uid_offsets):
-            refs.append(
-                GuidRef(
-                    f"players[{index}].player_uid",
-                    base + off,
-                    guid_mod.from_bytes(tail[off : off + GUID_SIZE]),
-                )
+        )
+    for index, off in enumerate(uid_offsets):
+        refs.append(
+            GuidRef(
+                f"players[{index}].player_uid",
+                base + off,
+                guid_mod.from_bytes(tail[off : off + GUID_SIZE]),
             )
-        return refs
-    return []
+        )
+    return refs
 
 
 def _unpack_i32(buf: bytes, offset: int) -> tuple[int]:
@@ -386,12 +406,15 @@ def walk(payload: bytes, world: dict[str, Any]) -> WalkResult:
                 key_refs: list[GuidRef] = []
                 _collect(key, f"{base}.key", key_refs)
                 for ref in key_refs:
-                    if (
-                        is_player is False
-                        and ref.path.endswith(".key.PlayerUId")
-                        and ref.value == PAL_SENTINEL_UID
-                    ):
+                    is_key_uid = ref.path.endswith(".key.PlayerUId")
+                    holds_sentinel = ref.value == PAL_SENTINEL_UID
+                    if is_key_uid and holds_sentinel and is_player is False:
                         result.pal_sentinels.append(ref)
+                    elif is_key_uid and holds_sentinel and is_player is None:
+                        # Cannot tell whether this is a Pal marker or the
+                        # host's own key. Rewriting it would delete a Pal, so
+                        # it stays out of refs and blocks the remap instead.
+                        result.unclassified.append(ref)
                     else:
                         result.refs.append(ref)
 
@@ -480,10 +503,20 @@ def _walk_blob(
 
 
 def find_references(payload: bytes, world: dict[str, Any], guid_text: str) -> WalkResult:
-    """Walk ``payload`` and keep only the refs equal to ``guid_text``."""
+    """
+    Walk ``payload`` and keep only the refs equal to ``guid_text``.
+
+    Filtering applies to ``refs`` only. Every safety signal -- undecoded blobs,
+    opaque regions, Pal markers, unclassified keys -- is carried through
+    unchanged, because a caller that drops them is a caller that can talk
+    itself into an unsafe remap.
+    """
     full = walk(payload, world)
     wanted = guid_mod.normalise(guid_text)
     return WalkResult(
         refs=[r for r in full.refs if r.value == wanted],
         undecoded=full.undecoded,
+        opaque=full.opaque,
+        pal_sentinels=full.pal_sentinels,
+        unclassified=full.unclassified,
     )

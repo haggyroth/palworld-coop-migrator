@@ -76,6 +76,29 @@ class SavContainer:
         )
 
 
+def _zlib_decompress(data: bytes, limit: int = MAX_PAYLOAD_BYTES) -> bytes:
+    """
+    Decompress with a hard output cap.
+
+    ``zlib.decompress`` has no output limit, so a small file can expand without
+    bound before any size check runs. The header's declared length is no
+    defence: it is attacker-controlled and independent of the real expansion --
+    a crafted 81 KB file declaring 1,000 bytes expanded to 84 MB, and the
+    mismatch was only noticed after the allocation. Cap it during, not after.
+    """
+    engine = zlib.decompressobj()
+    out = engine.decompress(data, limit + 1)
+    if len(out) > limit:
+        raise ContainerError(
+            f"decompressed output exceeded the {limit:,} byte guard; "
+            f"refusing to continue (possible decompression bomb)"
+        )
+    out += engine.flush()
+    if len(out) > limit:
+        raise ContainerError(f"decompressed output exceeded the {limit:,} byte guard after flush")
+    return out
+
+
 def _oodle_decompress(body: bytes, expected_length: int) -> bytes:
     try:
         import ooz  # type: ignore[import-not-found]
@@ -132,9 +155,9 @@ def decode(raw: bytes) -> SavContainer:
     if magic == MAGIC_PLZ:
         try:
             if save_type == TYPE_SINGLE:
-                payload = zlib.decompress(body)
+                payload = _zlib_decompress(body)
             elif save_type == TYPE_DOUBLE:
-                payload = zlib.decompress(zlib.decompress(body))
+                payload = _zlib_decompress(_zlib_decompress(body))
             else:
                 raise UnsupportedCompressionError(f"unknown PlZ save type 0x{save_type:02X}")
         except zlib.error as exc:
