@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-28
+
 ### Fixed
 
-Findings from a full code review of v0.5.0, each reproduced before being fixed.
+Findings from a full code review of v0.5.0, each reproduced before being fixed
+and each now covered by a regression test.
 
 - fix: **an entry whose `RawData` would not decode had its key treated as
   remappable.** If that entry was a Pal, its type marker was rewritten and the
@@ -123,6 +126,7 @@ objects all intact.
 Versions 0.1.0 through 0.3.1 were development milestones and were never tagged
 or published. `0.4.0` is the first release.
 
-[Unreleased]: https://github.com/haggyroth/palworld-coop-migrator/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/haggyroth/palworld-coop-migrator/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/haggyroth/palworld-coop-migrator/releases/tag/v0.5.1
 [0.5.0]: https://github.com/haggyroth/palworld-coop-migrator/releases/tag/v0.5.0
 [0.4.0]: https://github.com/haggyroth/palworld-coop-migrator/releases/tag/v0.4.0
